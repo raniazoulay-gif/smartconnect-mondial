@@ -19,6 +19,31 @@
       "name": "ROMI",
       "username": "romi",
       "password": "123456"
+    },
+    {
+      "name": "אולסי",
+      "username": "olsi",
+      "password": "123456"
+    },
+    {
+      "name": "טאקר",
+      "username": "taker",
+      "password": "123456"
+    },
+    {
+      "name": "גוני",
+      "username": "guni",
+      "password": "123456"
+    },
+    {
+      "name": "ים",
+      "username": "yam",
+      "password": "123456"
+    },
+    {
+      "name": "גינת",
+      "username": "ginat",
+      "password": "123456"
     }
   ]
 }

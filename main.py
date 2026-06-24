@@ -10,6 +10,22 @@ import json
 import logging
 import os
 import time
+
+import threading as _threading
+from collections import defaultdict as _defaultdict
+
+_login_attempts: dict = _defaultdict(list)
+_login_lock = _threading.Lock()
+
+def _check_login_rate(ip: str, max_attempts: int = 10, window: int = 60) -> bool:
+    """True = allowed, False = rate limited (10 attempts per IP per minute)."""
+    now = time.time()
+    with _login_lock:
+        _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < window]
+        if len(_login_attempts[ip]) >= max_attempts:
+            return False
+        _login_attempts[ip].append(now)
+        return True
 from itsdangerous import TimestampSigner, BadSignature, SignatureExpired
 
 _IL_TZ = ZoneInfo('Asia/Jerusalem')
@@ -138,6 +154,17 @@ async def maintenance_middleware(request: Request, call_next):
                 or path in ("/", "/login", "/logout"))
         if not skip:
             return HTMLResponse(MAINTENANCE_HTML.replace("__COMPANY_NAME__", COMPANY_CONFIG.get("company_name", "SmartConnect")), status_code=503)
+    return await call_next(request)
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > 5_000_000:  # 5MB max
+                return JSONResponse({"error": "Request body too large (max 5MB)"}, status_code=413)
+        except ValueError:
+            pass
     return await call_next(request)
 
 @app.get("/api/maintenance-status")
@@ -797,7 +824,13 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    db = get_db()
+    if not _check_login_rate(request.client.host):
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": "יותר מדי ניסיונות כניסה. נסה שוב בעוד דקה.",
+            "cfg": COMPANY_CONFIG
+        }, status_code=429)
+        db = get_db()
     user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
 
     if not user or not check_password(password, user["password_hash"]):

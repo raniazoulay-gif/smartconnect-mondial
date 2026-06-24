@@ -3445,3 +3445,192 @@ async def manager_agent_view_v2(request: Request, agent_id: int, date: str = Non
         "manager_view": True,
         "cfg": COMPANY_CONFIG,
     })
+
+
+
+@app.get("/manager/analyze", response_class=HTMLResponse)
+async def manager_analyze_page(request: Request):
+    user = get_current_user(request)
+    if not user or user['role'] != 'manager':
+        return RedirectResponse("/")
+    db = get_db()
+    agents = db.execute("SELECT id, name FROM users WHERE role='agent' ORDER BY name").fetchall()
+    customers = db.execute("SELECT id, name FROM customers WHERE deleted_at IS NULL ORDER BY name").fetchall()
+    db.close()
+    return templates.TemplateResponse("analyze.html", {
+        "request": request,
+        "agents": [dict(a) for a in agents],
+        "customers": [dict(c) for c in customers],
+        "cfg": COMPANY_CONFIG,
+        "company_name": COMPANY_CONFIG.get("company_name", ""),
+    })
+
+
+@app.post("/api/analyze")
+async def api_analyze(
+    request: Request,
+    filter_type: str = Form("general"),
+    filter_id: int = Form(0),
+    from_date: str = Form(""),
+    to_date: str = Form(""),
+    compare: str = Form(""),
+    compare_from: str = Form(""),
+    compare_to: str = Form(""),
+):
+    import os, traceback
+    user = get_current_user(request)
+    if not user or user['role'] != 'manager':
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    api_key = os.environ.get("CLAUDE_API_KEY", "")
+    if not api_key:
+        return JSONResponse({"error": "לא הוגדר Claude API Key עבור חברה זו"}, status_code=400)
+
+    try:
+        db = get_db()
+
+        def fetch_period(fd, td):
+            base_filter = ""
+            params = [fd, td]
+            if filter_type == "agent" and filter_id:
+                base_filter = "AND v.user_id = %s" if _is_postgres() else "AND v.user_id = ?"
+                params.append(filter_id)
+            elif filter_type == "customer" and filter_id:
+                base_filter = "AND v.customer_id = %s" if _is_postgres() else "AND v.customer_id = ?"
+                params.append(filter_id)
+
+            ph = "%s" if _is_postgres() else "?"
+            visits = db.execute(f"""
+                SELECT v.visit_date, v.check_in_time, v.check_out_time,
+                       v.duration_minutes, v.notes, v.is_phone,
+                       u.name as agent_name, c.name as customer_name, c.city, c.region
+                FROM visits v
+                LEFT JOIN users u ON v.user_id = u.id
+                LEFT JOIN customers c ON v.customer_id = c.id
+                WHERE v.visit_date BETWEEN {ph} AND {ph} {base_filter}
+                ORDER BY v.visit_date, u.name
+            """, params).fetchall()
+
+            comments = db.execute(f"""
+                SELECT vc.message, vc.user_name, vc.user_role, vc.visit_date,
+                       c.name as customer_name
+                FROM visit_comments vc
+                LEFT JOIN customers c ON vc.customer_id = c.id
+                WHERE vc.visit_date BETWEEN {ph} AND {ph} {base_filter.replace('v.user_id','vc.user_id').replace('v.customer_id','vc.customer_id')}
+                ORDER BY vc.visit_date
+            """, params).fetchall()
+
+            return [dict(v) for v in visits], [dict(c) for c in comments]
+
+        visits, comments = fetch_period(from_date, to_date)
+        compare_data = None
+        if compare == "on" and compare_from and compare_to:
+            compare_visits, compare_comments = fetch_period(compare_from, compare_to)
+            compare_data = {"visits": compare_visits, "comments": compare_comments,
+                           "from": compare_from, "to": compare_to}
+        db.close()
+
+        filter_label = "כללי"
+        if filter_type == "agent" and filter_id:
+            agent_names = [v["agent_name"] for v in visits if v.get("agent_name")]
+            filter_label = f"סוכן: {agent_names[0] if agent_names else filter_id}"
+        elif filter_type == "customer" and filter_id:
+            cust_names = [v["customer_name"] for v in visits if v.get("customer_name")]
+            filter_label = f"לקוח: {cust_names[0] if cust_names else filter_id}"
+
+        def summarize_visits(vs):
+            total = len(vs)
+            total_min = sum(v.get("duration_minutes") or 0 for v in vs)
+            phone = sum(1 for v in vs if v.get("is_phone"))
+            with_notes = sum(1 for v in vs if v.get("notes"))
+            agents = {}
+            for v in vs:
+                a = v.get("agent_name", "לא ידוע")
+                agents[a] = agents.get(a, 0) + 1
+            customers_visited = len(set(v.get("customer_name", "") for v in vs if v.get("customer_name")))
+            dates = sorted(set(v["visit_date"] for v in vs if v.get("visit_date")))
+            return {
+                "total_visits": total,
+                "total_minutes": total_min,
+                "total_hours": round(total_min / 60, 1),
+                "phone_visits": phone,
+                "visits_with_notes": with_notes,
+                "agents_breakdown": agents,
+                "unique_customers": customers_visited,
+                "active_days": len(dates),
+                "date_range": f"{dates[0]} עד {dates[-1]}" if dates else "אין נתונים",
+            }
+
+        stats = summarize_visits(visits)
+        notes_sample = [v["notes"] for v in visits if v.get("notes")][:20]
+        comments_sample = [f"{c['user_name']} ({c['user_role']}): {c['message']}" for c in comments if c.get("message")][:20]
+
+        prompt_parts = [
+            f"אתה מנתח נתוני מכירות שטח של חברה ישראלית. ענה בעברית בלבד. היה ספציפי, מעשי ומועיל.",
+            f"\n## תקופה מנותחת: {from_date} עד {to_date}",
+            f"## פילטר: {filter_label}",
+            f"\n## נתונים סטטיסטיים:",
+            f"- סה\"כ ביקורים: {stats['total_visits']}",
+            f"- סה\"כ שעות שטח: {stats['total_hours']}",
+            f"- ביקורים טלפוניים: {stats['phone_visits']}",
+            f"- ביקורים עם הערות: {stats['visits_with_notes']}",
+            f"- לקוחות שביקרו: {stats['unique_customers']}",
+            f"- ימי עבודה פעילים: {stats['active_days']}",
+        ]
+        if stats["agents_breakdown"]:
+            prompt_parts.append(f"- פירוט לפי סוכן: {stats['agents_breakdown']}")
+        if notes_sample:
+            prompt_parts.append(f"\n## הערות מהשטח (דגימה):\n" + "\n".join(f"- {n}" for n in notes_sample))
+        if comments_sample:
+            prompt_parts.append(f"\n## הודעות צ'אט (דגימה):\n" + "\n".join(f"- {c}" for c in comments_sample))
+
+        if compare_data:
+            c_stats = summarize_visits(compare_data["visits"])
+            prompt_parts.append(f"\n## השוואה לתקופה: {compare_data['from']} עד {compare_data['to']}")
+            prompt_parts.append(f"- ביקורים בתקופה הקודמת: {c_stats['total_visits']}")
+            prompt_parts.append(f"- שעות שטח בתקופה הקודמת: {c_stats['total_hours']}")
+            prompt_parts.append(f"- לקוחות שביקרו בתקופה הקודמת: {c_stats['unique_customers']}")
+            diff = stats["total_visits"] - c_stats["total_visits"]
+            prompt_parts.append(f"- שינוי בביקורים: {'+' if diff >= 0 else ''}{diff}")
+
+        prompt_parts.append("""
+## משימתך — כתוב דוח מנהלים מפורט הכולל:
+
+1. **סיכום ביצועים** — מה קרה בתקופה זו בקצרה
+2. **ניתוח מעמיק** — דפוסים, חוזקות, חולשות
+3. **ניתוח הערות** — אם יש הערות, מה הן אומרות על המצב בשטח
+4. **השוואה לתקופה קודמת** — אם יש נתוני השוואה, הסבר את הפערים
+5. **המלצות לשיפור** — 3-5 המלצות קונקרטיות ומעשיות
+
+כתוב בצורה ברורה, מקצועית, עם כותרות ברורות. השתמש ב-**bold** לכותרות.
+""")
+
+        full_prompt = "\n".join(prompt_parts)
+
+        import urllib.request as _urllib
+        payload = json.dumps({
+            "model": "claude-sonnet-4-6",
+            "max_tokens": 2000,
+            "messages": [{"role": "user", "content": full_prompt}]
+        }).encode("utf-8")
+
+        req = _urllib.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            method="POST"
+        )
+        with _urllib.urlopen(req, timeout=60) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+
+        text = result["content"][0]["text"]
+        return JSONResponse({"result": text})
+
+    except Exception:
+        err = traceback.format_exc()
+        print(f"[ANALYZE ERROR]\n{err}")
+        return JSONResponse({"error": "שגיאה בניתוח", "detail": err}, status_code=500)

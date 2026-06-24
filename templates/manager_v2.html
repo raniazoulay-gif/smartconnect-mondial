@@ -229,6 +229,7 @@ body { font-family:'Segoe UI',system-ui,Arial,sans-serif; background:var(--bg); 
 .btn-primary { background:linear-gradient(135deg,var(--primary),var(--primary2)); color:white; box-shadow:0 4px 14px rgba(0,50,125,0.2); }
 .btn-ghost   { background:#f1f5f9; color:var(--text); border:1px solid var(--border); }
 .btn-refresh { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+.btn-analyze { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; }
 .bar-btn:hover { transform:translateY(-1px); filter:brightness(0.95); }
 </style>
 </head>
@@ -621,6 +622,7 @@ body { font-family:'Segoe UI',system-ui,Arial,sans-serif; background:var(--bg); 
   <button id="mgc-btn" class="bar-btn btn-ghost" onclick="openMgc()">💬 צ'אט <span id="mgc-badge" style="display:none;background:#dc2626;color:white;border-radius:10px;padding:1px 7px;font-size:12px;font-weight:800;vertical-align:middle;margin-right:3px"></span></button>
   <a href="/manager?date={{ today }}" class="bar-btn btn-primary">📅 היום</a>
   <a href="/manager/history" class="bar-btn btn-refresh">📋 היסטוריית ביקורים</a>
+<a href="/manager/analyze" class="bar-btn btn-analyze">🤖 ניתוח AI</a>
 <button class="bar-btn btn-ghost" onclick="location.reload()">🔄 רענן</button>
 </div>
 

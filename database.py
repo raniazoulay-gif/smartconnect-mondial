@@ -123,8 +123,9 @@ class _PgCursor:
 
 class _PgWrapper:
     """Thin wrapper around psycopg2 connection to mimic sqlite3 interface"""
-    def __init__(self, conn):
+    def __init__(self, conn, pool=None):
         self._conn = conn
+        self._pool = pool
 
     def _convert(self, query):
         import re
@@ -146,7 +147,14 @@ class _PgWrapper:
         self._conn.commit()
 
     def close(self):
-        self._conn.close()
+        if self._pool:
+            try:
+                if not self._conn.closed:
+                    self._pool.putconn(self._conn)
+            except Exception:
+                pass
+        else:
+            self._conn.close()
 
     def rollback(self):
         self._conn.rollback()
@@ -157,13 +165,27 @@ class _PgWrapper:
         return _PgCursor(cur)
 
 
+_pg_pool = None
+_pg_pool_lock = None
+
+def _ensure_pool():
+    global _pg_pool, _pg_pool_lock
+    import threading
+    if _pg_pool_lock is None:
+        _pg_pool_lock = threading.Lock()
+    with _pg_pool_lock:
+        if _pg_pool is None:
+            import psycopg2.pool
+            url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            _pg_pool = psycopg2.pool.ThreadedConnectionPool(2, 10, url)
+    return _pg_pool
+
 def get_db():
     if _is_postgres():
-        import psycopg2
-        url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-        conn = psycopg2.connect(url)
+        pool = _ensure_pool()
+        conn = pool.getconn()
         conn.autocommit = False
-        return _PgWrapper(conn)
+        return _PgWrapper(conn, pool)
     else:
         conn = sqlite3.connect("sales.db", check_same_thread=False)
         conn.row_factory = sqlite3.Row
@@ -255,6 +277,20 @@ def init_db():
         ]
         for stmt in stmts:
             db.execute(stmt)
+        # Performance indexes (idempotent — safe to run on every startup)
+        for _idx in [
+            "CREATE INDEX IF NOT EXISTS idx_visits_user_date   ON visits(user_id, visit_date)",
+            "CREATE INDEX IF NOT EXISTS idx_visits_cust_date   ON visits(customer_id, visit_date)",
+            "CREATE INDEX IF NOT EXISTS idx_notif_created      ON notifications(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_comments_cust_date ON visit_comments(customer_id, visit_date)",
+            "CREATE INDEX IF NOT EXISTS idx_customers_region   ON customers(region)",
+            "CREATE INDEX IF NOT EXISTS idx_customers_reg_aday ON customers(region, assigned_visit_day)",
+            "CREATE INDEX IF NOT EXISTS idx_customers_reg_vday ON customers(region, visit_day)",
+        ]:
+            try:
+                db.execute(_idx)
+            except Exception:
+                pass
     else:
         # SQLite CREATE TABLE (original)
         db.execute('''CREATE TABLE IF NOT EXISTS users (

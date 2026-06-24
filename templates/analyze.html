@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ניתוח AI — {{ company_name }}</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #1a56db;
+  --primary-dark: #1e40af;
+  --bg: #f8faff;
+  --card: white;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --r: 16px;
+  --r-sm: 10px;
+  --ai: #7c3aed;
+}
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding-bottom: 40px; }
+.header { background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; padding: 20px 16px 16px; display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 20px; font-weight: 800; }
+.back-btn { background: rgba(255,255,255,0.2); border: none; color: white; padding: 8px 14px; border-radius: var(--r-sm); font-size: 14px; cursor: pointer; text-decoration: none; font-weight: 700; }
+.container { max-width: 680px; margin: 0 auto; padding: 16px; }
+.card { background: var(--card); border-radius: var(--r); border: 1px solid var(--border); padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.card-title { font-size: 15px; font-weight: 700; color: var(--ai); margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+.form-row { margin-bottom: 14px; }
+label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+select, input[type=date] { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--r-sm); font-size: 14px; font-family: inherit; background: white; color: var(--text); }
+select:focus, input:focus { outline: none; border-color: var(--ai); }
+.radio-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.radio-btn { flex: 1; min-width: 80px; }
+.radio-btn input { display: none; }
+.radio-btn label { background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 8px 12px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); transition: all 0.15s; display: block; margin: 0; }
+.radio-btn input:checked + label { background: var(--ai); border-color: var(--ai); color: white; }
+.date-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.compare-section { display: none; margin-top: 10px; padding: 12px; background: #f5f3ff; border-radius: var(--r-sm); border: 1px dashed #c4b5fd; }
+.compare-section.show { display: block; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.checkbox-row input { width: 18px; height: 18px; accent-color: var(--ai); cursor: pointer; }
+.checkbox-row label { font-size: 14px; font-weight: 600; color: var(--text); margin: 0; cursor: pointer; }
+.analyze-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #7c3aed, #4f46e5); color: white; border: none; border-radius: var(--r); font-size: 16px; font-weight: 800; cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px; }
+.analyze-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.analyze-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.loading { text-align: center; padding: 40px 20px; display: none; }
+.spinner { width: 48px; height: 48px; border: 4px solid #e9d5ff; border-top-color: var(--ai); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading p { color: var(--muted); font-size: 15px; font-weight: 600; }
+.result-card { display: none; }
+.result-card.show { display: block; }
+.result-body { font-size: 15px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
+.result-body strong { color: var(--ai); font-size: 16px; }
+.error-msg { background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--r-sm); padding: 12px 16px; color: #dc2626; font-size: 14px; display: none; }
+.error-msg.show { display: block; }
+</style>
+</head>
+<body>
+<div class="header">
+  <a href="/manager" class="back-btn">← חזרה</a>
+  <h1>🤖 ניתוח AI</h1>
+</div>
+<div class="container">
+  <div class="card">
+    <div class="card-title">⚙️ הגדרות ניתוח</div>
+
+    <div class="form-row">
+      <label>סוג ניתוח</label>
+      <div class="radio-group">
+        <div class="radio-btn"><input type="radio" name="filter_type" id="ft_general" value="general" checked onchange="updateFilterType()"><label for="ft_general">📊 כללי</label></div>
+        <div class="radio-btn"><input type="radio" name="filter_type" id="ft_agent" value="agent" onchange="updateFilterType()"><label for="ft_agent">👤 לפי סוכן</label></div>
+        <div class="radio-btn"><input type="radio" name="filter_type" id="ft_customer" value="customer" onchange="updateFilterType()"><label for="ft_customer">🏪 לפי לקוח</label></div>
+      </div>
+    </div>
+
+    <div class="form-row" id="agent_select_row" style="display:none">
+      <label>בחר סוכן</label>
+      <select id="agent_select">
+        {% for a in agents %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="form-row" id="customer_select_row" style="display:none">
+      <label>בחר לקוח</label>
+      <select id="customer_select">
+        {% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label>תקופה לניתוח</label>
+      <div class="date-row">
+        <div><label style="font-size:11px">מתאריך</label><input type="date" id="from_date"></div>
+        <div><label style="font-size:11px">עד תאריך</label><input type="date" id="to_date"></div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="checkbox-row">
+        <input type="checkbox" id="compare_cb" onchange="toggleCompare()">
+        <label for="compare_cb">📈 השווה לתקופה קודמת</label>
+      </div>
+      <div class="compare-section" id="compare_section">
+        <label>תקופה להשוואה</label>
+        <div class="date-row">
+          <div><label style="font-size:11px">מתאריך</label><input type="date" id="compare_from"></div>
+          <div><label style="font-size:11px">עד תאריך</label><input type="date" id="compare_to"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="analyze-btn" onclick="runAnalysis()">נתח 🤖</button>
+  </div>
+
+  <div class="error-msg" id="error_msg"></div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p>מנתח נתונים עם AI...<br><small style="color:#a78bfa">זה עשוי לקחת עד 30 שניות</small></p>
+  </div>
+
+  <div class="card result-card" id="result_card">
+    <div class="card-title">📋 תוצאות ניתוח AI</div>
+    <div class="result-body" id="result_body"></div>
+  </div>
+</div>
+
+<script>
+const now = new Date();
+const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+const lastDay = new Date(y, now.getMonth()+1, 0).getDate();
+document.getElementById('from_date').value = `${y}-${m}-01`;
+document.getElementById('to_date').value = `${y}-${m}-${String(lastDay).padStart(2,'0')}`;
+const pm = now.getMonth() === 0 ? 12 : now.getMonth();
+const py = now.getMonth() === 0 ? y-1 : y;
+const pmStr = String(pm).padStart(2,'0');
+const pmLast = new Date(py, pm, 0).getDate();
+document.getElementById('compare_from').value = `${py}-${pmStr}-01`;
+document.getElementById('compare_to').value = `${py}-${pmStr}-${String(pmLast).padStart(2,'0')}`;
+
+function updateFilterType() {
+  const ft = document.querySelector('input[name=filter_type]:checked').value;
+  document.getElementById('agent_select_row').style.display = ft === 'agent' ? 'block' : 'none';
+  document.getElementById('customer_select_row').style.display = ft === 'customer' ? 'block' : 'none';
+}
+
+function toggleCompare() {
+  const cb = document.getElementById('compare_cb');
+  document.getElementById('compare_section').classList.toggle('show', cb.checked);
+}
+
+function renderMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+async function runAnalysis() {
+  const btn = document.querySelector('.analyze-btn');
+  const loading = document.getElementById('loading');
+  const resultCard = document.getElementById('result_card');
+  const errorMsg = document.getElementById('error_msg');
+  const resultBody = document.getElementById('result_body');
+
+  btn.disabled = true;
+  loading.style.display = 'block';
+  resultCard.classList.remove('show');
+  errorMsg.classList.remove('show');
+
+  const ft = document.querySelector('input[name=filter_type]:checked').value;
+  const filterId = ft === 'agent' ? document.getElementById('agent_select').value :
+                   ft === 'customer' ? document.getElementById('customer_select').value : '0';
+  const compareCb = document.getElementById('compare_cb').checked;
+
+  const fd = new FormData();
+  fd.append('filter_type', ft);
+  fd.append('filter_id', filterId);
+  fd.append('from_date', document.getElementById('from_date').value);
+  fd.append('to_date', document.getElementById('to_date').value);
+  if (compareCb) {
+    fd.append('compare', 'on');
+    fd.append('compare_from', document.getElementById('compare_from').value);
+    fd.append('compare_to', document.getElementById('compare_to').value);
+  }
+
+  try {
+    const r = await fetch('/api/analyze', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.error) {
+      errorMsg.textContent = data.error;
+      errorMsg.classList.add('show');
+    } else {
+      resultBody.innerHTML = renderMarkdown(data.result);
+      resultCard.classList.add('show');
+      resultCard.scrollIntoView({ behavior: 'smooth' });
+    }
+  } catch(e) {
+    errorMsg.textContent = 'שגיאת רשת — נסה שוב';
+    errorMsg.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    loading.style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>

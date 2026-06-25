@@ -274,6 +274,8 @@ def init_db():
             """ALTER TABLE customers ADD COLUMN IF NOT EXISTS week_5 INTEGER DEFAULT 0""",
             """ALTER TABLE customers ADD COLUMN IF NOT EXISTS week_6 INTEGER DEFAULT 0""",
             """ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_phone INTEGER DEFAULT 0""",
+            """ALTER TABLE visits ADD COLUMN IF NOT EXISTS checkin_lat REAL""",
+            """ALTER TABLE visits ADD COLUMN IF NOT EXISTS checkin_lng REAL""",
         ]
         for stmt in stmts:
             db.execute(stmt)
@@ -391,6 +393,15 @@ def init_db():
         # SQLite migrations — visit_comments (is_read)
         try:
             db.execute('ALTER TABLE visit_comments ADD COLUMN is_read INTEGER DEFAULT 0')
+        except Exception:
+            pass
+        # SQLite migrations — visits (GPS check-in location)
+        try:
+            db.execute("ALTER TABLE visits ADD COLUMN checkin_lat REAL")
+        except Exception:
+            pass
+        try:
+            db.execute("ALTER TABLE visits ADD COLUMN checkin_lng REAL")
         except Exception:
             pass
 

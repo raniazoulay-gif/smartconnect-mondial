@@ -1053,6 +1053,8 @@ async def checkin(request: Request):  # v2
     if not customer_id:
         return JSONResponse({"error": "customer_id חסר"}, status_code=400)
     visit_date = data.get("visit_date", str(now_il().date()))
+    lat = data.get("lat")
+    lng = data.get("lng")
     now = now_il().strftime("%H:%M:%S")
 
     db = get_db()
@@ -1085,13 +1087,13 @@ async def checkin(request: Request):  # v2
     if existing:
         # רשומה קיימת ללא check_in_time (הערות נשמרו לפני כניסה) — עדכן check_in_time
         db.execute(
-            "UPDATE visits SET check_in_time=? WHERE id=?",
-            (now, existing['id'])
+            "UPDATE visits SET check_in_time=?, checkin_lat=?, checkin_lng=? WHERE id=?",
+            (now, lat, lng, existing['id'])
         )
     else:
         db.execute(
-            "INSERT INTO visits (user_id, customer_id, visit_date, check_in_time) VALUES (?,?,?,?)",
-            (user['id'], customer_id, visit_date, now)
+            "INSERT INTO visits (user_id, customer_id, visit_date, check_in_time, checkin_lat, checkin_lng) VALUES (?,?,?,?,?,?)",
+            (user['id'], customer_id, visit_date, now, lat, lng)
         )
 
     customer = db.execute("SELECT name FROM customers WHERE id=?", (customer_id,)).fetchone()

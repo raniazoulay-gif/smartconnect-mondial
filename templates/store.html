@@ -160,6 +160,9 @@ textarea::placeholder { color:#94a3b8; }
     {% if visit.pause_duration_minutes %} | ⏸ השהייה: {{ visit.pause_duration_minutes }} דקות | 🤝 פגישה נטו: {{ visit.duration_minutes - visit.pause_duration_minutes }} דקות{% endif %}
     </div>
     {% endif %}
+    {% if visit and visit.checkin_lat %}
+    <a href="https://maps.google.com/?q={{ visit.checkin_lat }},{{ visit.checkin_lng }}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#1a73e8;color:#fff;padding:6px 14px;border-radius:8px;text-decoration:none;font-size:13px;margin-top:8px;font-weight:500;">📍 מיקום כניסה</a>
+    {% endif %}
     {% if visit.notes %}
     <div class="saved-notes">
       <div class="card-title">📝 הערות הסוכן</div>
@@ -172,6 +175,9 @@ textarea::placeholder { color:#94a3b8; }
     {% if visit.paused_at %}<br>⏸ כרגע בהשהייה מ-{{ visit.paused_at[:5] }}{% endif %}
     </div>
     {% if visit.is_phone %}<div class="phone-badge">📞 פגישה טלפונית</div>{% endif %}
+    {% if visit and visit.checkin_lat %}
+    <a href="https://maps.google.com/?q={{ visit.checkin_lat }},{{ visit.checkin_lng }}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#1a73e8;color:#fff;padding:6px 14px;border-radius:8px;text-decoration:none;font-size:13px;margin-top:8px;font-weight:500;">📍 מיקום כניסה</a>
+    {% endif %}
 
     {% else %}
     <div class="no-visit">❌ הסוכן לא ביקר בחנות זו היום</div>
@@ -393,7 +399,14 @@ function showToast(msg, duration=2500) {
 async function doCheckin() {
   const btn = document.querySelector('.btn-checkin');
   btn.disabled = true; btn.textContent = '⏳ רושם כניסה...';
-  const res = await fetch('/api/checkin', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({customer_id:CUSTOMER_ID, visit_date:VISIT_DATE}) });
+  let lat = null, lng = null;
+  try {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, {timeout: 8000, maximumAge: 0}));
+    lat = pos.coords.latitude;
+    lng = pos.coords.longitude;
+  } catch(e) { /* GPS optional */ }
+  const res = await fetch('/api/checkin', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({customer_id:CUSTOMER_ID, visit_date:VISIT_DATE, lat, lng}) });
   const data = await res.json();
   if (data.status === 'ok') {
     showToast('✅ נכנסת לחנות בשעה ' + data.time.slice(0,5));

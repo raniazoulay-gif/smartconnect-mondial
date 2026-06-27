@@ -830,7 +830,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
             "error": "יותר מדי ניסיונות כניסה. נסה שוב בעוד דקה.",
             "cfg": COMPANY_CONFIG
         }, status_code=429)
-        db = get_db()
+    db = get_db()
     user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
 
     if not user or not check_password(password, user["password_hash"]):

@@ -160,7 +160,7 @@ textarea::placeholder { color:#94a3b8; }
     {% if visit.pause_duration_minutes %} | ⏸ השהייה: {{ visit.pause_duration_minutes }} דקות | 🤝 פגישה נטו: {{ visit.duration_minutes - visit.pause_duration_minutes }} דקות{% endif %}
     </div>
     {% endif %}
-    {% if visit and visit.checkin_lat %}
+    {% if is_manager and visit and visit.checkin_lat %}
     <a href="https://maps.google.com/?q={{ visit.checkin_lat }},{{ visit.checkin_lng }}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#1a73e8;color:#fff;padding:6px 14px;border-radius:8px;text-decoration:none;font-size:13px;margin-top:8px;font-weight:500;">📍 מיקום כניסה</a>
     {% endif %}
     {% if visit.notes %}
@@ -175,7 +175,7 @@ textarea::placeholder { color:#94a3b8; }
     {% if visit.paused_at %}<br>⏸ כרגע בהשהייה מ-{{ visit.paused_at[:5] }}{% endif %}
     </div>
     {% if visit.is_phone %}<div class="phone-badge">📞 פגישה טלפונית</div>{% endif %}
-    {% if visit and visit.checkin_lat %}
+    {% if is_manager and visit and visit.checkin_lat %}
     <a href="https://maps.google.com/?q={{ visit.checkin_lat }},{{ visit.checkin_lng }}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#1a73e8;color:#fff;padding:6px 14px;border-radius:8px;text-decoration:none;font-size:13px;margin-top:8px;font-weight:500;">📍 מיקום כניסה</a>
     {% endif %}
 
